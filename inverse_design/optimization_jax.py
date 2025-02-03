@@ -36,7 +36,7 @@ from .interpolation_jax import interpolator2D, ExperimentalData
 from .utils import *
 
 image_analysis_module = dynamic_import(
-    "../../../Experiments/Image_database/image_analysis.py", "image_analysis_module"
+    os.path.abspath("../../Experiments\Image_analysis\image_analysis_improved.py"), "image_analysis_module"
 )
 
 
@@ -99,7 +99,10 @@ class objectives:
         Objective function with additional constraints and penalty terms.
         """
         dL = jnp.array(params[:n])
-        dLrest1 = dLrest(theta[0], interpolator_func=interpolator2D)
+        # define with partial interpolator2D with fixed source
+        def interpolator2D_s(theta, dL):
+            return interpolator2D(theta, dL, source=source)
+        dLrest1 = dLrest(theta[0], interpolator_func=interpolator2D_s)
         hyperparam = jnp.array(params[n:])
 
         # Objective 1: Minimizing the difference from target_value
@@ -697,6 +700,7 @@ class Postprocessing:
         dL1 = dL
 
         def f1(theta):
+            theta = jnp.atleast_1d(theta)
             dL2 = jnp.repeat(dL1, len(theta))
             f = interpolator2D(theta, dL2, method=method, source=source)
             hp_f1 = hyperparam_jax(width, thickness)
@@ -808,7 +812,7 @@ class Postprocessing:
         Creates a partial interpolation function with scaled hyperparameters
         and an optional mirror transform.
         """
-        func = self.interpolated_fit_global(
+        func = self.interpolated_fit_global_jax(
             dL, 0, 8 * hyperparam, 0.127, method=method, source=source
         )
         return mirror(func) if mirrored else func

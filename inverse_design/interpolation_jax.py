@@ -22,10 +22,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.interpolate import interp1d
+from functools import lru_cache
 
 # Local modules
 from ...data_processing.load_df_script import load_df
 from ...data_processing.process_df_script import preprocess_data_for_accelernum
+
+
 
 
 ## Simulation Data Preparation
@@ -114,7 +117,7 @@ class ExperimentalData:
 
 
 class ExperimentalDataPreparation:
-    def __init__(self, path="../../../Experiments/tests"):
+    def __init__(self, path="../../Experiments/tests"):
         self.path = path
         self.torques_list = []
         self.base_folders = []
@@ -221,6 +224,7 @@ def interpolator_simple(method="regulargrid"):
     angles = dp.angles
     dL_values = dp.dL_values
     torque_data = jnp.array(torques_list)
+    torque_data = jnp.vstack(torque_data)
     i2d = Interpolation2D(method=method)
     i2d.build_interpolator(dL_values, angles, torque_data)
 
@@ -229,19 +233,24 @@ def interpolator_simple(method="regulargrid"):
 
     return interpolate_points
 
+@lru_cache(maxsize=None)
+def torques_lists_exp():
+    edp_exp = ExperimentalDataPreparation()
+    torques_list_exp = edp_exp.lists()
+    return torques_list_exp
 
 def interpolator_simple_exp(method="regulargrid"):
     """
     Experimental data interpolation using ExperimentalData and Interpolation2D.
     This example uses dummy data for demonstration. Adapt as needed.
     """
-    edp = ExperimentalDataPreparation()
-    torques_list = edp.lists()
+    torques_list_exp = torques_lists_exp()
     angles = np.arange(-145, 125.5, 0.5)
     dL_values = jnp.array(
         [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
     )
-    torque_data = jnp.array(torques_list)
+    torque_data = jnp.array(torques_list_exp)
+    torque_data = jnp.vstack(torque_data)
     i2d = Interpolation2D(method=method)
     i2d.build_interpolator(dL_values, angles, torque_data)
 
@@ -249,7 +258,6 @@ def interpolator_simple_exp(method="regulargrid"):
         return i2d.interpolator(points)
 
     return interpolate_points
-
 
 def interpolator2D(theta, dL, method="regulargrid", source: str = None):
     """
