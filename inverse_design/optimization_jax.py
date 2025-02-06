@@ -339,49 +339,105 @@ class nlopt_optimizers:
         theta: Union[List[float], np.ndarray, jax.Array],
         n: int = 2,
         source: Optional[str] = None,
-    ) -> np.ndarray:
+        max_time_minutes: float = 5.0,  # Maximum allowed time in minutes
+    ) -> dict:
         """
-        Launch optimization via NLopt (G_MLSL_LDS) using LN_BOBYQA as a local solver. Objective function : directly minimizing the difference between the rest angles and the target angles.
+        Launch optimization via NLopt (G_MLSL_LDS) with LN_BOBYQA as a local solver.
+        A maximum time limit (in minutes) is enforced, and the best candidate (i.e.,
+        the one with the lowest objective value encountered) is returned in a dict.
+        
+        The objective function minimizes the difference between computed rest angles
+        and target angles, with a small regularization term.
+        
+        Returns a dict with:
+        - "optimized_params": The best candidate parameter vector.
+        - "objective": The corresponding objective value.
         """
         params = jnp.asarray(params)
         n = int(0.5 * (len(params) + 1))
-        print(n)
+        print(f"n = {n}")
+
+        # Container to record the best candidate encountered during evaluations
+        best_solution = {"x": None, "obj": float("inf")}
 
         def obj(params_flat):
             params_flat = jnp.asarray(params_flat)
-            # On suppose tup_vectorized et find_rest_angles_interpolated_jax_hp
-            # déjà définis dans le même fichier ou importés
             tup1 = self.gbs.tup_vectorized([params_flat])[0]
-            rest_angles = self.po.find_rest_angles_interpolated_jax_hp(
-                tup1, source=source
-            )
+            rest_angles = self.po.find_rest_angles_interpolated_jax_hp(tup1, source=source)
             rest_angles = jnp.array(rest_angles)
             theta_jax = jnp.asarray(theta)
-            return jnp.linalg.norm(rest_angles - theta_jax) + 0.001 * jnp.linalg.norm(
-                params_flat
-            )
+            return jnp.linalg.norm(rest_angles - theta_jax) + 0.001 * jnp.linalg.norm(params_flat)
 
         def objective(params_flat, grad):
             params_flat = jnp.asarray(params_flat)
             obj_value = obj(params_flat)
+            obj_value_float = float(obj_value)
+            
+            # Record the candidate if it has a better objective value than seen so far
+            if best_solution["x"] is None or obj_value_float < best_solution["obj"]:
+                best_solution["obj"] = obj_value_float
+                best_solution["x"] = np.array(params_flat)
+            
             if grad.size > 0:
                 grad_jax = jax.grad(obj)(params_flat)
                 grad[:] = np.array(grad_jax)
-            print(float(obj_value))
-            print(np.array(params_flat))
-            return float(obj_value)
+            
+            print(f"Objective: {obj_value_float}")
+            print(f"Params: {np.array(params_flat)}")
+            return obj_value_float
 
+        # Set up NLopt using global optimization method G_MLSL_LDS and LN_BOBYQA as a local solver
         opt = nlopt.opt(nlopt.G_MLSL_LDS, len(params))
-        lower_bounds, upper_bounds = self.gbs.build_bounds(n, -180, min_hp=0.01)
+        lower_bounds, upper_bounds = self.gbs.build_bounds(n, -180, min_hp=0.001)
         opt.set_lower_bounds(lower_bounds)
         opt.set_upper_bounds(upper_bounds)
         opt.set_min_objective(objective)
         opt.set_local_optimizer(nlopt.opt(nlopt.LN_BOBYQA, len(params)))
         opt.set_stopval(0.25 + 0.5 * (n - 1) * (n - 2))
+        
+        # Enforce maximum time (convert minutes to seconds)
+        opt.set_maxtime(max_time_minutes * 60)
 
-        opt_result = opt.optimize(np.array(params))
-        return opt_result
+        # Run the optimization. Note that the candidate returned by NLopt via optimize
+        # isn't necessarily the best one encountered.
+        try:
+            _ = opt.optimize(np.array(params))
+        except Exception as e:
+            print("Optimization terminated with exception:", e)
 
+        return best_solution["x"], best_solution["obj"]
+
+    def batch_minimize_combinations(
+        self,
+        params_list: list,
+        theta: Union[List[float], np.ndarray, jax.Array],
+        source: Optional[str] = None,
+    ) -> dict:
+        """
+        For each set of initial parameters in params_list, call the existing
+        minimize_combination_with_nlopt2 function and collect the results.
+
+        Returns a dictionary mapping each run index to a dict containing:
+        - 'initial_params': the original parameter vector,
+        - 'optimized_params': the result from NLopt.
+        """
+        results = {}
+        for i, params in enumerate(params_list):
+            print(f"\nStarting optimization for parameter set {i}")
+            # Ensure params is a numpy array (if not already)
+            params_np = np.array(params)
+            # Call the original non-batch function
+            optimized_params, objective_value = self.minimize_combination_with_nlopt2(params_np, theta, source=source)
+            
+            # Assemble the result. If your non-batch version later returns more than 
+            # just the optimized parameters (e.g., an objective value or an optimization status),
+            # include them here.
+            results[i] = {
+                "initial_params": params_np,
+                "optimized_params": optimized_params,
+                "objective": objective_value,        # if available
+            }
+        return results
 
 class jax_optimizers:
     """
@@ -962,16 +1018,15 @@ class plots:
         plt.plot(x, f0(x), label="Simulation Data")
         plt.plot(x, f(x), label="Interpolated Function (Experimental Data)")
         if dL in [0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]:
-            dL_int = str(dL)[-2:]
             filename = (
-                f"../../Experiments/experiment/250109_experiment/b_dl{dL_int}/base"
+                f"../../" # Change the path
             )
             angle, torque = self.exp.read_experiment_spec(filename)
             plt.plot(angle, torque, "x", label="Experimental Data", color="red")
         plt.xlabel("Angle (degrees)")
         plt.ylabel("Torque (mN.m)")
         plt.legend()
-        output_dir = f"../../Graphs/inverse_design"
+        output_dir = f"../../Graphs/inverse_design" # Change the path
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         plt.savefig(
@@ -984,51 +1039,19 @@ class plots:
         dL_grid = np.arange(0.33, 1.01, 0.01)
         rest_angles_sim = []
         rest_angles_interp_experiment = []
-        dL_grid2 = [
-            0.35,
-            0.40,
-            0.45,
-            0.50,
-            0.55,
-            0.60,
-            0.65,
-            0.70,
-            0.75,
-            0.80,
-            0.85,
-            0.90,
-            0.95,
-        ]
-        rest_angles_interp_exp = []
         for dL in dL_grid:
             f1 = self.po.interpolated_fit_global_jax(
                 dL, 0, 8, 0.127, method="regulargrid"
             )
             rest_angle = find_zeros_scipy(f=f1)
             rest_angles_sim.append(rest_angle)
-        dL_grid3 = np.arange(0.35, 1.01, 0.01)
+        dL_grid3 = np.arange(0.4, 1.01, 0.01)
         for dL in dL_grid3:
             f2 = self.po.interpolated_fit_global_jax(
                 dL, 0, 8, 0.127, method="regulargrid", source="exp"
             )
             rest_angle = find_zeros_scipy(f=f2)
             rest_angles_interp_experiment.append(rest_angle)
-        for dL in dL_grid2:
-            dL = round(dL, 2)
-            if len(str(dL)) == 3:
-                dL_int = str(dL)[-1:] + "0"
-            else:
-                dL_int = str(dL)[-2:]
-            filename = (
-                f"../../../Experiments/experiment/250109_experiment/b_dl{dL_int}/base"
-            )
-            angle, torque = self.exp.read_experiment_spec(filename)
-            Torque_interpolator = interp1d(
-                angle, torque, kind="linear", fill_value="extrapolate"
-            )
-            rest_angle = find_zeros_scipy(f=Torque_interpolator)
-            rest_angles_interp_exp.append(rest_angle)
-        print(rest_angles_interp_exp)
         plt.plot(dL_grid, rest_angles_sim, label="Rest Angle Simulation", color="black")
         plt.plot(
             dL_grid3,
@@ -1036,17 +1059,10 @@ class plots:
             label="Rest Angle Interpolated",
             color="blue",
         )
-        plt.plot(
-            dL_grid2,
-            rest_angles_interp_exp,
-            "o",
-            label="Rest Angle experiment",
-            color="blue",
-        )
         ## Add experimental data
 
         # Définir le chemin des données
-        base_path = "../../../Experiments/Image_database/experiment_interpolation"  # Modifier ce chemin
+        base_path = "./"  # Modifier ce chemin
         base_path = os.path.abspath(base_path)
 
         cropbox = (1600, 550, 4500, 4000)  # Valeur par défaut

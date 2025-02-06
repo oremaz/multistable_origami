@@ -117,7 +117,7 @@ class ExperimentalData:
 
 
 class ExperimentalDataPreparation:
-    def __init__(self, path="../../Experiments/tests"):
+    def __init__(self, path="./"):
         self.path = path
         self.torques_list = []
         self.base_folders = []
@@ -214,15 +214,18 @@ class Plotter:
         plt.grid(True)
         plt.show()
 
-
-def interpolator_simple(method="regulargrid"):
-    """
-    Base data interpolation using DataPreparation and Interpolation2D.
-    """
+@lru_cache(maxsize=None)
+def lists():   
     dp = DataPreparation()
     _, torques_list = dp.lists()
     angles = dp.angles
     dL_values = dp.dL_values
+    return torques_list, angles, dL_values
+def interpolator_simple(method="regulargrid"):
+    """
+    Base data interpolation using DataPreparation and Interpolation2D.
+    """
+    torques_list, angles, dL_values = lists()
     torque_data = jnp.array(torques_list)
     torque_data = jnp.vstack(torque_data)
     i2d = Interpolation2D(method=method)
@@ -247,7 +250,7 @@ def interpolator_simple_exp(method="regulargrid"):
     torques_list_exp = torques_lists_exp()
     angles = np.arange(-145, 125.5, 0.5)
     dL_values = jnp.array(
-        [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
     )
     torque_data = jnp.array(torques_list_exp)
     torque_data = jnp.vstack(torque_data)

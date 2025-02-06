@@ -19,6 +19,7 @@ from jax import lax
 import jax.numpy as jnp
 import scipy as sp
 import importlib.util
+from functools import lru_cache
 
 
 def bump_function(x):
@@ -196,16 +197,20 @@ def tups_sampled_conc(tups_sampled):
     tups_sampled_conc = jnp.concatenate(tups_sampled, axis=0)
     return tups_sampled_conc
 
+def theta_rest(dL, interpolator_func):
+
+    def f(theta):
+        return interpolator_func(theta, dL)
+
+    return find_zeros_jax(f)
 
 def dLrest(theta, interpolator_func):
     """
     Finds the zero of interpolator_func(theta, dL), effectively finding
     the baseline dL for a given theta[1].
     """
-
-    def f(dL_val):
-        return interpolator_func(theta, dL_val)
-
+    def f(dL):
+        return interpolator_func(theta, dL)
     return find_zeros_jax(f)
 
 
