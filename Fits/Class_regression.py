@@ -81,49 +81,62 @@ class PowerModel:
         rmse = np.sqrt(np.mean((y - y_pred) ** 2))  # Calculer le RMSE
         return -rmse  # Retourner la valeur négative du RMSE
 
-
-class PowerModelWithFixedPoint:
-    def __init__(self, b_fixed, fixed_point_x, fixed_point_y):
+class PowerModelWithFixedPoints:
+    def __init__(self, b_fixed, fixed_points):
+        """
+        b_fixed : Exposant fixe (puissance)
+        fixed_points : Liste de tuples (x, y) représentant les points fixes
+        """
         self.b_fixed = b_fixed
-        self.fixed_point_x = fixed_point_x
-        self.fixed_point_y = fixed_point_y
-        self.model = LinearRegression(
-            fit_intercept=False
-        )  # Pas d'intercept automatique
-        self.coef = None
-        self.intercept = None
+        self.fixed_points = fixed_points  # Liste de points fixes [(x1, y1), (x2, y2), ...]
+        self.coef_ = None
+        self.intercept_ = None
 
     def fit(self, X, y):
-        # Transform features: (x^b_fixed - fixed_point_x^b_fixed)
-        X_poly = np.power(X, self.b_fixed) - np.power(self.fixed_point_x, self.b_fixed)
+        """
+        Ajuste le modèle en tenant compte des points fixes.
+        """
+        # Transformation des caractéristiques : x^b_fixed
+        X_trans = np.power(X, self.b_fixed).reshape(-1, 1)
 
-        # Fit the linear regression model sans intercept
-        self.model.fit(X_poly.reshape(-1, 1), y)
+        # Ajout d'une colonne pour le biais (intercept)
+        X_design = np.hstack([X_trans, np.ones((X_trans.shape[0], 1))])
 
-        # Store the coefficient and explicitly set intercept to force fixed point
-        self.coef = self.model.coef_[0]
-        # Store the coefficient and explicitly set intercept to force fixed point
-        self.intercept = (
-            self.fixed_point_y
-            - self.coef * np.power(self.fixed_point_x, self.b_fixed)
-            + np.power(self.fixed_point_x, self.b_fixed)
-        )
+        # Ajout des contraintes des points fixes
+        fixed_X = np.array([pt[0] for pt in self.fixed_points])
+        fixed_y = np.array([pt[1] for pt in self.fixed_points])
+        fixed_X_trans = np.power(fixed_X, self.b_fixed).reshape(-1, 1)
+        fixed_X_design = np.hstack([fixed_X_trans, np.ones((fixed_X_trans.shape[0], 1))])
+
+        # Concaténation des données d'entraînement et des points fixes
+        X_combined = np.vstack([X_design, fixed_X_design])
+        y_combined = np.concatenate([y, fixed_y])
+
+        # Poids : 1 pour les données normales, poids très élevé pour les points fixes
+        weights = np.concatenate([np.ones(len(X)), 1e6 * np.ones(len(fixed_X))])
+        
+        # Régression pondérée : ajustement avec les poids
+        W = np.diag(weights)
+        beta = np.linalg.inv(X_combined.T @ W @ X_combined) @ (X_combined.T @ W @ y_combined)
+        
+        # Stockage du coefficient et calcul explicite de l'intercept
+        self.coef_ = beta[0]
+        self.intercept_ = beta[1]
 
     def predict(self, X):
-        # Transform features for prediction: (x^b_fixed - fixed_point_x^b_fixed)
-        X_poly = np.power(X, self.b_fixed) - np.power(self.fixed_point_x, self.b_fixed)
-
-        # Predict without adjusting the intercept
-        return self.model.predict(X_poly.reshape(-1, 1)) + self.intercept
+        """
+        Prédit les valeurs cibles pour les nouvelles données.
+        """
+        X_trans = np.power(X, self.b_fixed)
+        return self.coef_ * X_trans + self.intercept_
 
     def score(self, X, y):
-        # Calculate R² using predictions adjusted for the fixed point
+        """
+        Calcule le score R² ou une métrique personnalisée (par exemple RMSE).
+        """
         y_pred = self.predict(X)
-
-        # Calculate RMSE
         rmse = np.sqrt(np.mean((y - y_pred) ** 2))
         return -rmse
-
 
 class PolynomialModel:
     def __init__(self, degree):

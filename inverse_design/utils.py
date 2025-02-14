@@ -19,7 +19,6 @@ from jax import lax
 import jax.numpy as jnp
 import scipy as sp
 import importlib.util
-from functools import lru_cache
 
 
 def bump_function(x):
@@ -197,20 +196,23 @@ def tups_sampled_conc(tups_sampled):
     tups_sampled_conc = jnp.concatenate(tups_sampled, axis=0)
     return tups_sampled_conc
 
-def theta_rest(dL, interpolator_func):
 
+def theta_rest(dL, interpolator_func):
     def f(theta):
         return interpolator_func(theta, dL)
 
     return find_zeros_jax(f)
+
 
 def dLrest(theta, interpolator_func):
     """
     Finds the zero of interpolator_func(theta, dL), effectively finding
     the baseline dL for a given theta[1].
     """
+
     def f(dL):
         return interpolator_func(theta, dL)
+
     return find_zeros_jax(f)
 
 
@@ -219,3 +221,12 @@ def dynamic_import(module_path, module_name):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def tup_vectorized(list_params):
+    n = int(0.5 * (len(list_params[0]) + 1))
+    dL = jnp.array(list_params)[:, :n]
+    hyperparam = jnp.array(list_params)[:, n:]
+    hyperparam = jnp.insert(hyperparam, 0, 1, axis=1)
+    tup = jnp.stack([dL, hyperparam], axis=-1)
+    return tup

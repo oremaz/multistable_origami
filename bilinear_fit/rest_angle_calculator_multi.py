@@ -26,7 +26,7 @@ import matplotlib.pyplot as plt
 from .bilinear_fits import bilinear_model_pca, find_zeros_of_bilinear
 from .interpolated_data_script import interpolated_fit
 from ...data_processing.load_df_script import load_df
-from ...data_processing.process_df_script import preprocess_data_for_accelernum
+from ...data_processing.process_df_script import preprocess_data_angles
 
 
 def mirror(f: callable) -> callable:
@@ -79,7 +79,7 @@ def pred_sim(
 ) -> callable:
     df = load_df(dL, offset, width, thickness)
     if process:
-        df = preprocess_data_for_accelernum(df)
+        df = preprocess_data_angles(df)
     func = interpolate_df(df)
     return mirror(func) if mirrored else func
 

@@ -30,7 +30,7 @@ from ...data_processing.clustering import (
 from ...data_processing.load_df_script import load_df
 from ...data_processing.process_df_script import (
     preprocess_data,
-    preprocess_data_for_accelernum,
+    preprocess_data_angles,
 )
 
 save_dir = "../../Graphs/bilinear_fit"
@@ -102,7 +102,7 @@ def plot_acceler_num_multiple(dico_df: dict, parameter="dL"):
 
     # Plot the acceledLn number for each dataframe
     for key, df in dico_df.items():
-        df = preprocess_data_for_accelernum(df)
+        df = preprocess_data_angles(df)
         accelern_num_values = df["accelernum"]
         # Je veux un label numérique (extrait dL de la clé sous forme 'data/data_raw-dL0_10-offset0-th0_05-width19_0/data_raw-dL0_10-offset0_0-th0_05-width19_0.csv'
         keylab = key.split(parameter)[1].split("-")[0].replace("_", ".")

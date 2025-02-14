@@ -26,7 +26,7 @@ from functools import lru_cache
 
 # Local modules
 from ...data_processing.load_df_script import load_df
-from ...data_processing.process_df_script import preprocess_data_for_accelernum
+from ...data_processing.process_df_script import preprocess_data_angles
 
 
 
@@ -49,8 +49,8 @@ class DataPreparation:
         over a shared angle grid.
         """
         for dL in self.dL_values:
-            df = load_df(dL)  # Existing implementation[1]
-            df = preprocess_data_for_accelernum(df)  # Existing implementation[1]
+            df = load_df(dL)  
+            df = preprocess_data_angles(df) 
             df = df[["angle", "torque"]]
             self.dataframes.append(df)
 
@@ -62,11 +62,17 @@ class DataPreparation:
 
         return self.dataframes, self.torques_list
 
+class ExperimentalDataPreparation:
+    def __init__(self, path='change'):
+        self.path = path
+        self.torques_list = []
+        self.base_folders = []
 
-## Experimental Data Preparation
-class ExperimentalData:
-    def __init__(self):
-        pass
+        # Populate base folders during initialization
+        for root, dirs, files in os.walk(self.path):
+            if "base" in dirs:
+                base_folder_path = os.path.join(root, "base")
+                self.base_folders.append(base_folder_path)
 
     def read_experiment_spec(self, folder, i=-1, slicing_angle=10, indices=[132, 402]):
         """
@@ -76,7 +82,7 @@ class ExperimentalData:
         Time, Torque, Angle = [], [], []
         columns_to_extract = [0, 3, 4]
         sheet_indices = [2, 3, 4]
-
+        ## Sheet translation zero
         for filename in os.listdir(folder):
             if filename.endswith(".xlsx") or filename.endswith(".xls"):
                 file_path = os.path.join(folder, filename)
@@ -115,21 +121,6 @@ class ExperimentalData:
         i0, i1 = indices
         return Angle[i][i0:i1], Torque[i][i0:i1]
 
-
-class ExperimentalDataPreparation:
-    def __init__(self, path="./"):
-        self.path = path
-        self.torques_list = []
-        self.base_folders = []
-
-        # Populate base folders during initialization
-        for root, dirs, files in os.walk(self.path):
-            if "base" in dirs:
-                base_folder_path = os.path.join(root, "base")
-                self.base_folders.append(base_folder_path)
-
-        self.Edata = ExperimentalData()
-
     def lists(self):
         """
         Loads data for each d/L, preprocesses it, and interpolates
@@ -137,40 +128,36 @@ class ExperimentalDataPreparation:
         """
 
         for folder in self.base_folders:
-            Angle, Torque = self.Edata.read_experiment_spec(folder)
+            Angle, Torque = self.read_experiment_spec(folder)
             Torque_interpolator = interp1d(
                 Angle, Torque, kind="linear", fill_value="extrapolate"
             )
-            Angle1 = np.arange(-145, 125.5, 0.5)
+            Angle1 = np.arange(-135, 135.5, 0.5)
             Torque_interp = Torque_interpolator(Angle1)
             self.torques_list.append(Torque_interp)
 
         return self.torques_list
 
-
 ## Interpolation
 class Interpolation2D:
-    def __init__(self, method="regulargrid"):
-        self.method = method
+    def __init__(self):
         self.interpolator = None
 
     def fine_grid_interpolation_callable(self, dL_values, angles, torque_data):
         """
-        Creates a 2D interpolator with the chosen method[1].
         """
-        if self.method == "regulargrid":
-            interpolator = jax.scipy.interpolate.RegularGridInterpolator(
-                (dL_values, angles),
-                torque_data,
-                method="linear",
-                bounds_error=False,
-                fill_value=None,
-            )
+        interpolator = jax.scipy.interpolate.RegularGridInterpolator(
+            (dL_values, angles),
+            torque_data,
+            method="linear",
+            bounds_error=False,
+            fill_value=None,
+        )
 
-            def interpolator_callable(points):
-                return interpolator(points)
+        def interpolator_callable(points):
+            return interpolator(points)
 
-            return interpolator_callable
+        return interpolator_callable
 
     def build_interpolator(self, dL_values, angles, torque_data):
         """
@@ -221,14 +208,15 @@ def lists():
     angles = dp.angles
     dL_values = dp.dL_values
     return torques_list, angles, dL_values
-def interpolator_simple(method="regulargrid"):
+
+def interpolator_simple():
     """
     Base data interpolation using DataPreparation and Interpolation2D.
     """
     torques_list, angles, dL_values = lists()
     torque_data = jnp.array(torques_list)
     torque_data = jnp.vstack(torque_data)
-    i2d = Interpolation2D(method=method)
+    i2d = Interpolation2D()
     i2d.build_interpolator(dL_values, angles, torque_data)
 
     def interpolate_points(points):
@@ -242,19 +230,19 @@ def torques_lists_exp():
     torques_list_exp = edp_exp.lists()
     return torques_list_exp
 
-def interpolator_simple_exp(method="regulargrid"):
+def interpolator_simple_exp():
     """
     Experimental data interpolation using ExperimentalData and Interpolation2D.
     This example uses dummy data for demonstration. Adapt as needed.
     """
     torques_list_exp = torques_lists_exp()
-    angles = np.arange(-145, 125.5, 0.5)
+    angles = np.arange(-135, 135.5, 0.5)
     dL_values = jnp.array(
-        [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
+        [0.3,0.35,0.4,0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95]
     )
     torque_data = jnp.array(torques_list_exp)
     torque_data = jnp.vstack(torque_data)
-    i2d = Interpolation2D(method=method)
+    i2d = Interpolation2D()
     i2d.build_interpolator(dL_values, angles, torque_data)
 
     def interpolate_points(points):
@@ -262,7 +250,7 @@ def interpolator_simple_exp(method="regulargrid"):
 
     return interpolate_points
 
-def interpolator2D(theta, dL, method="regulargrid", source: str = None):
+def interpolator2D(theta, dL, source: str = None):
     """
     2D interpolation for the provided angle(s) (theta) and d/L value(s).
     source can be:
@@ -270,9 +258,9 @@ def interpolator2D(theta, dL, method="regulargrid", source: str = None):
       - 'exp': Experimental data
     """
     if source is None or source == "sim":
-        interpolator = interpolator_simple(method=method)
+        interpolator = interpolator_simple()
     elif source == "exp":
-        interpolator = interpolator_simple_exp(method=method)
+        interpolator = interpolator_simple_exp()
     else:
         raise ValueError("Invalid source. Use None or 'exp'.")
 

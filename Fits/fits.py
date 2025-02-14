@@ -39,7 +39,7 @@ def fit_linear_model(X, y, b_fixed: Union[float, int]):
     return model, r_squared, y_pred
 
 
-def fit_linear_model_with_fixed_point(X, y, b_fixed, fixed_point_x, fixed_point_y):
+def fit_linear_model_with_fixed_point(X, y, b_fixed, fixed_points):
     # Si b_fixed == 0, utiliser un modèle constant
     if b_fixed == 0:
         model = ConstantModel()
@@ -49,7 +49,7 @@ def fit_linear_model_with_fixed_point(X, y, b_fixed, fixed_point_x, fixed_point_
         return model, r_squared, y_pred
 
     # Si b_fixed > 0, utiliser un modèle puissance avec un point fixe
-    model = PowerModelWithFixedPoint(b_fixed, fixed_point_x, fixed_point_y)
+    model = PowerModelWithFixedPoints(b_fixed, fixed_points)
     model.fit(X, y)
     y_pred = model.predict(X)
     r_squared = model.score(X, y)
@@ -76,7 +76,7 @@ def best_fit(
     polynomial: bool = False,
     power_values: Union[List[Union[float, int]], np.ndarray] = np.arange(0, 8, 1),
     degrees=[0, 1, 2, 3],
-    fixed_point: Optional[Tuple[Union[float, int], Union[float, int]]] = None,
+    fixed_point: Optional[List[Tuple[Union[float, int], Union[float, int]]]] = None,
 ):
     """Find the best model with the highest R² among various options."""
 
@@ -102,15 +102,15 @@ def best_fit(
         best_description = ""
         for power in power_values:
             model, r_squared, y_pred = fit_linear_model_with_fixed_point(
-                X, y, power, fixed_point[0], fixed_point[1]
+                X, y, power, fixed_points=fixed_point
             )
             if r_squared > best_r_squared:
                 best_power = power
                 best_r_squared = r_squared
                 best_model = model
                 best_y_pred = y_pred
-                best_slope = model.coef
-                best_intercept = model.intercept
+                best_slope = model.coef_
+                best_intercept = model.intercept_
                 best_description = (
                     f"y = {best_slope:.3f} * x^{power} + {best_intercept:.2f}"
                 )
